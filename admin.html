@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex"><title>Add a mix</title><link rel="stylesheet" href="style.css"></head>
+<body>
+<main class="win">
+  <div class="bar"><h1>Add a mix</h1><div class="btns" aria-hidden="true"><i></i><i></i><i></i></div></div>
+  <div class="pane">
+    <form id="f">
+      <img id="prev" class="prev" alt="Cover preview">
+      <div class="group">
+        <label><span>Title</span><input id="title" required placeholder="Midnight Drive Vol. 2"></label>
+        <label><span>Date</span><input id="date" type="date" required></label>
+        <label><span>Cover</span><input id="cover" type="file" accept="image/*" required></label>
+        <label><span>Mega link</span><input id="mega" type="url" required placeholder="https://mega.nz/file/…"></label>
+      </div>
+      <details class="group" id="cfg">
+        <summary>GitHub connection</summary>
+        <label><span>Username</span><input id="owner" autocomplete="off" placeholder="your-username"></label>
+        <label><span>Repository</span><input id="repo" autocomplete="off" placeholder="your-repo"></label>
+        <label><span>Branch</span><input id="branch" autocomplete="off" placeholder="main"></label>
+        <label><span>Token</span><input id="token" type="password" autocomplete="off" placeholder="github_pat_…"></label>
+        <small>Saved only in this browser. It never goes into the repo.</small>
+      </details>
+      <button class="btn" id="go">Publish mix</button>
+    </form>
+    <p class="status" id="st" role="status" style="display:none;margin-top:16px"></p>
+  </div>
+</main>
+<script>
+const $=id=>document.getElementById(id),S=JSON.parse(localStorage.getItem('mixcfg')||'{}');
+['owner','repo','branch','token'].forEach(k=>$(k).value=S[k]||(k==='branch'?'main':''));
+if(!S.token)$('cfg').open=true;
+$('date').value=new Date(Date.now()-new Date().getTimezoneOffset()*6e4).toISOString().slice(0,10);
+$('cover').onchange=e=>{const f=e.target.files[0];if(f){$('prev').src=URL.createObjectURL(f);$('prev').style.display='block'}};
+const say=(t,c='')=>{const s=$('st');s.style.display='block';s.className='status '+c;s.textContent=t};
+const u8=s=>btoa(unescape(encodeURIComponent(s))),de=b=>decodeURIComponent(escape(atob(b.replace(/\n/g,''))));
+async function gh(c,path,opt={}){
+  const r=await fetch(`https://api.github.com/repos/${c.owner}/${c.repo}/contents/${path}`,{...opt,
+    headers:{Authorization:'Bearer '+c.token,Accept:'application/vnd.github+json'}});
+  if(r.status===404&&!opt.method)return null;
+  const j=await r.json();
+  if(!r.ok)throw new Error(r.status===401?'GitHub rejected the token. Check it and its Contents permission.':(j.message||'GitHub error '+r.status));
+  return j;
+}
+async function put(c,path,b64,msg){
+  const ex=await gh(c,path+'?ref='+encodeURIComponent(c.branch));
+  return gh(c,path,{method:'PUT',body:JSON.stringify({message:msg,content:b64,branch:c.branch,...(ex?{sha:ex.sha}:{})})});
+}
+const square=f=>new Promise((ok,no)=>{const i=new Image();i.onerror=()=>no(new Error('Couldn’t read that image.'));
+  i.onload=()=>{const s=Math.min(i.width,i.height),n=Math.min(1000,s),c=document.createElement('canvas');c.width=c.height=n;
+    c.getContext('2d').drawImage(i,(i.width-s)/2,(i.height-s)/2,s,s,0,0,n,n);
+    c.toBlob(b=>{const r=new FileReader();r.onload=()=>ok({b64:r.result.split(',')[1],ext:b.type==='image/webp'?'webp':'png'});r.readAsDataURL(b)},'image/webp',.86)};
+  i.src=URL.createObjectURL(f)});
+$('f').onsubmit=async e=>{
+  e.preventDefault();
+  const c={owner:$('owner').value.trim(),repo:$('repo').value.trim(),branch:$('branch').value.trim()||'main',token:$('token').value.trim()};
+  if(!c.owner||!c.repo||!c.token){$('cfg').open=true;return say('Fill in your GitHub username, repository, and token.','err')}
+  localStorage.setItem('mixcfg',JSON.stringify(c));
+  const mega=$('mega').value.trim();
+  if(!/^https:\/\/mega\.(nz|io)\//.test(mega))return say('Paste the full Mega link, starting with https://mega.nz/','err');
+  $('go').disabled=true;
+  try{
+    const title=$('title').value.trim(),date=$('date').value;
+    say('Resizing cover…');const img=await square($('cover').files[0]);
+    const slug=title.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'mix',path=`covers/${date}-${slug}.${img.ext}`;
+    say('Uploading cover…');await put(c,path,img.b64,'Add cover: '+title);
+    say('Updating mixes.json…');
+    const cur=await gh(c,'mixes.json?ref='+encodeURIComponent(c.branch)),list=cur?JSON.parse(de(cur.content)):[];
+    list.push({title,date,cover:path,mega});
+    await put(c,'mixes.json',u8(JSON.stringify(list,null,2)+'\n'),'Add mix: '+title);
+    say('Published. The site updates in about a minute.','ok');
+    $('f').reset();$('prev').style.display='none';
+    ['owner','repo','branch','token'].forEach(k=>$(k).value=c[k]);
+    $('date').value=date;
+  }catch(err){say(err.message,'err')}
+  $('go').disabled=false;
+};
+</script></body></html>

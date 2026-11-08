@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mixes</title><link rel="stylesheet" href="style.css"></head>
+<body>
+<main class="win">
+  <div class="bar"><h1>Mixes</h1><div class="btns" aria-hidden="true"><i></i><i></i><i></i></div></div>
+  <div class="pane">
+    <p class="lead">Custom mixes. Tap Download to open the Mega link.</p>
+    <div class="shelf" id="shelf"><p class="empty">Loading mixes…</p></div>
+  </div>
+</main>
+<script>
+const shelf=document.getElementById('shelf');
+const el=(t,c,x)=>{const e=document.createElement(t);if(c)e.className=c;if(x)e.textContent=x;return e};
+const safe=u=>/^https:\/\/mega\.(nz|io)\//.test(u);
+fetch('mixes.json?'+Date.now()).then(r=>r.json()).then(list=>{
+  shelf.textContent='';
+  if(!list.length){shelf.append(el('p','empty','No mixes yet. Add the first one from admin.html.'));return}
+  list.sort((a,b)=>b.date.localeCompare(a.date)).forEach(m=>{
+    const card=el('article'),box=el('div','case'),a=el('a','cover');
+    a.href=safe(m.mega)?m.mega:'#';a.target='_blank';a.rel='noopener noreferrer';a.setAttribute('aria-label','Download '+m.title);
+    const img=new Image();img.alt='Cover art for '+m.title;img.loading='lazy';img.src=m.cover;
+    img.onerror=()=>img.replaceWith(el('div','ph'));
+    a.append(img);box.append(a);
+    const meta=el('div','meta'),t=el('time');
+    t.dateTime=m.date;t.textContent=new Date(m.date+'T12:00:00').toLocaleDateString(undefined,{year:'numeric',month:'long',day:'numeric'});
+    const b=el('a','btn','Download');b.href=a.href;b.target='_blank';b.rel='noopener noreferrer';
+    meta.append(el('h2','',m.title),t,b);card.append(box,meta);shelf.append(card);
+  });
+}).catch(()=>{shelf.textContent='';shelf.append(el('p','empty','Couldn’t load mixes.json. Check that the file exists and is valid JSON.'))});
+</script></body></html>

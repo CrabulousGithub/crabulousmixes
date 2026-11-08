@@ -1,21 +1,33 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Mixes</title><link rel="stylesheet" href="style.css"></head>
+<meta name="robots" content="noindex"><title>Mixes</title><link rel="stylesheet" href="style.css">
+<style>.gate{max-width:380px;margin:20px auto}.gate .lead{text-align:center;margin-bottom:18px}.gate .status{margin-top:14px}</style></head>
 <body>
 <main class="win">
   <div class="bar"><h1>Mixes</h1><div class="btns" aria-hidden="true"><i></i><i></i><i></i></div></div>
   <div class="pane">
-    <p class="lead">Custom mixes. Tap Download to open the Mega link.</p>
-    <div class="shelf" id="shelf"><p class="empty">Loading mixes…</p></div>
+    <p class="empty" id="load">Loading…</p>
+    <form class="gate" id="gate" hidden>
+      <p class="lead">Enter the passcode to see the mixes.</p>
+      <div class="group"><label><span>Passcode</span><input id="pw" type="password" autocomplete="current-password" required></label></div>
+      <button class="btn" id="unlock">Unlock</button>
+      <p class="status err" id="err" role="alert" hidden></p>
+    </form>
+    <div id="lib" hidden>
+      <p class="lead">Custom mixes. Tap Download to open the Mega link.</p>
+      <div class="shelf" id="shelf"></div>
+    </div>
   </div>
 </main>
+<script src="vault.js"></script>
 <script>
-const shelf=document.getElementById('shelf');
+const $=id=>document.getElementById(id),shelf=$('shelf');
 const el=(t,c,x)=>{const e=document.createElement(t);if(c)e.className=c;if(x)e.textContent=x;return e};
 const safe=u=>/^https:\/\/mega\.(nz|io)\//.test(u);
-fetch('mixes.json?'+Date.now()).then(r=>r.json()).then(list=>{
-  shelf.textContent='';
+let env;
+function render(list){
+  $('load').hidden=true;$('gate').hidden=true;$('lib').hidden=false;shelf.textContent='';
   if(!list.length){shelf.append(el('p','empty','No mixes yet. Add the first one from admin.html.'));return}
   list.sort((a,b)=>b.date.localeCompare(a.date)).forEach(m=>{
     const card=el('article'),box=el('div','case'),a=el('a','cover');
@@ -28,5 +40,18 @@ fetch('mixes.json?'+Date.now()).then(r=>r.json()).then(list=>{
     const b=el('a','btn','Download');b.href=a.href;b.target='_blank';b.rel='noopener noreferrer';
     meta.append(el('h2','',m.title),t,b);card.append(box,meta);shelf.append(card);
   });
-}).catch(()=>{shelf.textContent='';shelf.append(el('p','empty','Couldn’t load mixes.json. Check that the file exists and is valid JSON.'))});
+}
+async function unlock(p){const list=await Vault.open(env,p);sessionStorage.setItem('mixpw',p);render(list)}
+$('gate').onsubmit=async e=>{
+  e.preventDefault();$('err').hidden=true;$('unlock').disabled=true;$('unlock').textContent='Unlocking…';
+  try{await unlock($('pw').value)}
+  catch(x){$('err').textContent='Wrong passcode. Try again.';$('err').hidden=false;$('pw').value='';$('pw').focus()}
+  $('unlock').disabled=false;$('unlock').textContent='Unlock';
+};
+fetch('mixes.json?'+Date.now()).then(r=>r.json()).then(async d=>{
+  if(Array.isArray(d))return render(d);
+  env=d;const p=sessionStorage.getItem('mixpw');
+  if(p){try{return await unlock(p)}catch(x){sessionStorage.removeItem('mixpw')}}
+  $('load').hidden=true;$('gate').hidden=false;$('pw').focus();
+}).catch(()=>{$('load').textContent='Couldn’t load mixes.json. Check that the file exists and that the page is served over https.'});
 </script></body></html>
